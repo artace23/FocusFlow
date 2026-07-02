@@ -1,0 +1,44 @@
+{
+    "name":  "focusflow",
+    "displayName":  "FocusFlow",
+    "version":  "1.0.0",
+    "description":  "A clean, modern productivity and focus-tracking mobile app built with Apache Cordova.",
+    "main":  "index.js",
+    "scripts":  {
+                    "build":  "cordova build",
+                    "build:android":  "cordova build android",
+                    "run:android":  "cordova run android",
+                    "prepare":  "cordova prepare"
+                },
+    "cordova":  {
+                    "platforms":  [
+                                      "ios",
+                                      "android"
+                                  ],
+                    "plugins":  {
+                                    "cordova-plugin-device":  {
+
+                                                              },
+                                    "cordova-plugin-camera":  {
+
+                                                              },
+                                    "cordova-plugin-vibration":  {
+
+                                                                 },
+                                    "cordova-plugin-statusbar":  {
+
+                                                                 }
+                                }
+                },
+    "dependencies":  {
+                         "cordova-plugin-camera":  "^7.0.0",
+                         "cordova-plugin-device":  "^2.1.0",
+                         "cordova-plugin-statusbar":  "^4.0.0",
+                         "cordova-plugin-vibration":  "^3.1.1"
+                     },
+    "devDependencies":  {
+                            "cordova":  "^12.0.0",
+                            "cordova-android":  "^15.0.0",
+                            "cordova-ios":  "^7.0.0"
+                        }
+}

@@ -1,0 +1,56 @@
+<?xml version='1.0' encoding='utf-8'?>
+<widget id="com.focusflow.app" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+    <name>FocusFlow</name>
+    <description>
+        A clean, modern productivity and focus-tracking mobile app with Pomodoro timer, task management, and statistics.
+    </description>
+    <author email="dev@focusflow.app" href="https://focusflow.app">
+        FocusFlow Team
+    </author>
+    <content src="index.html" />
+    <access origin="*" />
+    <allow-intent href="http://*/*" />
+    <allow-intent href="https://*/*" />
+    <allow-intent href="tel:*" />
+    <allow-intent href="sms:*" />
+    <allow-intent href="mailto:*" />
+    <allow-intent href="geo:*" />
+    <preference name="DisallowOverscroll" value="true" />
+    <preference name="android-minSdkVersion" value="24" />
+    <preference name="Orientation" value="portrait" />
+    <preference name="Fullscreen" value="false" />
+    <preference name="BackgroundColor" value="#ff14161f" />
+    <preference name="SplashScreenDelay" value="2000" />
+    <preference name="AutoHideSplashScreen" value="true" />
+    <preference name="StatusBarBackgroundColor" value="#14161f" />
+    <preference name="StatusBarStyle" value="lightcontent" />
+    <platform name="android">
+        <allow-intent href="market:*" />
+        <icon density="ldpi" src="res/android/icon-ldpi.png" />
+        <icon density="mdpi" src="res/android/icon-mdpi.png" />
+        <icon density="hdpi" src="res/android/icon-hdpi.png" />
+        <icon density="xhdpi" src="res/android/icon-xhdpi.png" />
+        <icon density="xxhdpi" src="res/android/icon-xxhdpi.png" />
+        <icon density="xxxhdpi" src="res/android/icon-xxxhdpi.png" />
+        <config-file parent="/manifest" target="AndroidManifest.xml">
+            <uses-permission android:name="android.permission.VIBRATE" />
+            <uses-permission android:name="android.permission.CAMERA" />
+            <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+            <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+            <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+        </config-file>
+    </platform>
+    <platform name="ios">
+        <allow-intent href="itms:*" />
+        <allow-intent href="itms-apps:*" />
+        <preference name="UIStatusBarStyle" value="UIStatusBarStyleLightContent" />
+        <config-file parent="NSCameraUsageDescription" target="*-Info.plist">
+            <string>FocusFlow uses the camera to set your profile photo.</string>
+        </config-file>
+    </platform>
+    <plugin name="cordova-plugin-device" spec="^2.1.0" />
+    <plugin name="cordova-plugin-camera" spec="^7.0.0" />
+    <plugin name="cordova-plugin-vibration" spec="^3.1.1" />
+    <plugin name="cordova-plugin-statusbar" spec="^4.0.0" />
+    <engine name="ios" spec="^7.0.0" />
+</widget>

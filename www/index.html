@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!--
+        Content-Security-Policy: required by Cordova for Android.
+        Allows local resources, inline styles/scripts needed by the app shell,
+        and the Google Fonts CDN used for typography.
+    -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self' data: gap: https://ssl.gstatic.com 'unsafe-inline' 'unsafe-eval';
+                   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+                   font-src 'self' https://fonts.gstatic.com;
+                   img-src 'self' data: content:;
+                   media-src *;
+                   connect-src 'self';">
+    <meta name="viewport" content="initial-scale=1, width=device-width, viewport-fit=cover, user-scalable=no">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="msapplication-tap-highlight" content="no">
+    <title>FocusFlow</title>
+
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600;700&display=swap">
+    <link rel="stylesheet" type="text/css" href="css/style.css">
+</head>
+<body>
+
+    <!-- App shell -->
+    <div id="app">
+
+        <!-- Top bar: shared across views, content swapped by app.js -->
+        <header class="topbar">
+            <div class="topbar-title">
+                <span class="topbar-eyebrow" id="topbarEyebrow">Focus session</span>
+                <h1 id="topbarTitle">FocusFlow</h1>
+            </div>
+            <div class="topbar-avatar" id="topbarAvatar">
+                <img id="topbarAvatarImg" src="" alt="" hidden>
+                <span id="topbarAvatarInitial">F</span>
+            </div>
+        </header>
+
+        <!-- Main scrollable content area -->
+        <main class="views">
+
+            <!-- ============ HOME VIEW (Focus Timer) ============ -->
+            <section class="view active" id="view-home" data-view="home">
+
+                <div class="card ring-card">
+                    <!-- Signature element: the Flow Ring, an SVG circular progress timer -->
+                    <div class="flow-ring-wrap">
+                        <svg class="flow-ring" viewBox="0 0 220 220">
+                            <circle class="flow-ring-track" cx="110" cy="110" r="98"></circle>
+                            <circle class="flow-ring-progress" id="ringProgress" cx="110" cy="110" r="98"></circle>
+                        </svg>
+                        <div class="flow-ring-center">
+                            <span class="timer-display" id="timerDisplay">25:00</span>
+                            <span class="timer-mode" id="timerMode">Focus</span>
+                        </div>
+                    </div>
+
+                    <div class="timer-controls">
+                        <button class="btn btn-ghost" id="btnReset" aria-label="Reset timer">Reset</button>
+                        <button class="btn btn-primary" id="btnStart">Start Focus</button>
+                        <button class="btn btn-ghost" id="btnPause" hidden>Pause</button>
+                    </div>
+                </div>
+
+                <div class="quick-stats">
+                    <div class="mini-stat">
+                        <span class="mini-stat-value" id="statSessionsToday">0</span>
+                        <span class="mini-stat-label">Sessions today</span>
+                    </div>
+                    <div class="mini-stat">
+                        <span class="mini-stat-value" id="statMinutesToday">0</span>
+                        <span class="mini-stat-label">Minutes focused</span>
+                    </div>
+                    <div class="mini-stat">
+                        <span class="mini-stat-value" id="statStreak">0</span>
+                        <span class="mini-stat-label">Day streak</span>
+                    </div>
+                </div>
+
+                <div class="section-header">
+                    <h2>Up next</h2>
+                    <button class="link-btn" data-nav="tasks">See all</button>
+                </div>
+                <div class="card task-preview-card" id="upNextList">
+                    <!-- Populated dynamically by tasks.js -->
+                    <p class="empty-hint">No tasks yet. Add one from the Tasks tab.</p>
+                </div>
+            </section>
+
+            <!-- ============ TASKS VIEW ============ -->
+            <section class="view" id="view-tasks" data-view="tasks">
+                <div class="card add-task-card">
+                    <input type="text" id="newTaskInput" class="text-input" placeholder="What are you working on?" maxlength="80">
+                    <button class="btn btn-primary btn-compact" id="btnAddTask">Add</button>
+                </div>
+
+                <div class="section-header">
+                    <h2>Today's tasks</h2>
+                    <span class="task-count" id="taskCount">0 tasks</span>
+                </div>
+
+                <ul class="task-list" id="taskList">
+                    <!-- Task items injected by tasks.js -->
+                </ul>
+
+                <p class="empty-hint" id="taskEmptyHint" hidden>Nothing here yet — add your first task above.</p>
+            </section>
+
+            <!-- ============ STATISTICS VIEW ============ -->
+            <section class="view" id="view-stats" data-view="stats">
+                <div class="stats-grid">
+                    <div class="card stat-card">
+                        <span class="stat-card-value" id="totalSessions">0</span>
+                        <span class="stat-card-label">Total sessions</span>
+                    </div>
+                    <div class="card stat-card">
+                        <span class="stat-card-value" id="totalFocusTime">0h 0m</span>
+                        <span class="stat-card-label">Total focus time</span>
+                    </div>
+                    <div class="card stat-card">
+                        <span class="stat-card-value" id="tasksCompletedToday">0</span>
+                        <span class="stat-card-label">Tasks done today</span>
+                    </div>
+                    <div class="card stat-card">
+                        <span class="stat-card-value" id="avgSession">0m</span>
+                        <span class="stat-card-label">Avg. session length</span>
+                    </div>
+                </div>
+
+                <div class="section-header">
+                    <h2>This week</h2>
+                </div>
+                <div class="card week-card">
+                    <div class="week-chart" id="weekChart">
+                        <!-- 7 bars injected by stats.js -->
+                    </div>
+                    <div class="week-labels" id="weekLabels">
+                        <!-- Day labels injected by stats.js -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============ PROFILE VIEW ============ -->
+            <section class="view" id="view-profile" data-view="profile">
+                <div class="card profile-card">
+                    <div class="profile-photo-wrap" id="profilePhotoWrap">
+                        <img id="profilePhoto" src="" alt="Profile photo" hidden>
+                        <span id="profilePhotoInitial">F</span>
+                    </div>
+                    <button class="link-btn" id="btnChangePhoto">Change photo</button>
+                </div>
+
+                <div class="section-header">
+                    <h2>Device</h2>
+                </div>
+                <div class="card device-card" id="deviceCard">
+                    <div class="device-row">
+                        <span class="device-label">Model</span>
+                        <span class="device-value" id="deviceModel">—</span>
+                    </div>
+                    <div class="device-row">
+                        <span class="device-label">Platform</span>
+                        <span class="device-value" id="devicePlatform">—</span>
+                    </div>
+                    <div class="device-row">
+                        <span class="device-label">OS version</span>
+                        <span class="device-value" id="deviceVersion">—</span>
+                    </div>
+                    <div class="device-row">
+                        <span class="device-label">Manufacturer</span>
+                        <span class="device-value" id="deviceManufacturer">—</span>
+                    </div>
+                </div>
+
+                <div class="section-header">
+                    <h2>Preferences</h2>
+                </div>
+                <div class="card">
+                    <div class="pref-row">
+                        <span>Notifications when a session ends</span>
+                        <label class="switch">
+                            <input type="checkbox" id="toggleNotifications" checked>
+                            <span class="switch-track"></span>
+                        </label>
+                    </div>
+                    <div class="pref-row">
+                        <span>Vibrate on completion</span>
+                        <label class="switch">
+                            <input type="checkbox" id="toggleVibration" checked>
+                            <span class="switch-track"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <button class="btn btn-danger-ghost" id="btnResetData">Reset all app data</button>
+            </section>
+
+        </main>
+
+        <!-- Bottom navigation -->
+        <nav class="bottom-nav">
+            <button class="nav-item active" data-nav="home" aria-label="Home">
+                <span class="nav-icon">◎</span>
+                <span class="nav-label">Home</span>
+            </button>
+            <button class="nav-item" data-nav="tasks" aria-label="Tasks">
+                <span class="nav-icon">☑</span>
+                <span class="nav-label">Tasks</span>
+            </button>
+            <button class="nav-item" data-nav="stats" aria-label="Statistics">
+                <span class="nav-icon">▤</span>
+                <span class="nav-label">Stats</span>
+            </button>
+            <button class="nav-item" data-nav="profile" aria-label="Profile">
+                <span class="nav-icon">◈</span>
+                <span class="nav-label">Profile</span>
+            </button>
+        </nav>
+
+        <!-- Lightweight toast notification, used for in-app feedback -->
+        <div class="toast" id="toast"></div>
+    </div>
+
+    <!--
+        Script load order matters:
+        1. cordova.js       – injected by the Cordova build, provides device APIs
+        2. app.js           – defines the shared FocusFlow namespace + storage + navigation
+        3. timer/tasks/stats/device.js – feature modules that attach themselves to FocusFlow
+    -->
+    <script type="text/javascript" src="cordova.js"></script>
+    <script type="text/javascript" src="js/app.js"></script>
+    <script type="text/javascript" src="js/timer.js"></script>
+    <script type="text/javascript" src="js/tasks.js"></script>
+    <script type="text/javascript" src="js/stats.js"></script>
+    <script type="text/javascript" src="js/device.js"></script>
+</body>
+</html>
