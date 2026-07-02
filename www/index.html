@@ -2,11 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <!--
-        Content-Security-Policy: required by Cordova for Android.
-        Allows local resources, inline styles/scripts needed by the app shell,
-        and the Google Fonts CDN used for typography.
-    -->
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'self' data: gap: https://ssl.gstatic.com 'unsafe-inline' 'unsafe-eval';
                    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
@@ -18,16 +13,14 @@
     <meta name="format-detection" content="telephone=no">
     <meta name="msapplication-tap-highlight" content="no">
     <title>FocusFlow</title>
-
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600;700&display=swap">
     <link rel="stylesheet" type="text/css" href="css/style.css">
 </head>
 <body>
 
-    <!-- App shell -->
     <div id="app">
 
-        <!-- Top bar: shared across views, content swapped by app.js -->
+        <!-- Top bar -->
         <header class="topbar">
             <div class="topbar-title">
                 <span class="topbar-eyebrow" id="topbarEyebrow">Focus session</span>
@@ -39,14 +32,19 @@
             </div>
         </header>
 
-        <!-- Main scrollable content area -->
         <main class="views">
 
-            <!-- ============ HOME VIEW (Focus Timer) ============ -->
+            <!-- ============ HOME VIEW ============ -->
             <section class="view active" id="view-home" data-view="home">
 
+                <!-- Session mode pills -->
+                <div class="mode-pills">
+                    <button class="mode-pill active" data-mode="focus" id="modeFocus">Focus</button>
+                    <button class="mode-pill" data-mode="short" id="modeShort">Short Break</button>
+                    <button class="mode-pill" data-mode="long" id="modeLong">Long Break</button>
+                </div>
+
                 <div class="card ring-card">
-                    <!-- Signature element: the Flow Ring, an SVG circular progress timer -->
                     <div class="flow-ring-wrap">
                         <svg class="flow-ring" viewBox="0 0 220 220">
                             <circle class="flow-ring-track" cx="110" cy="110" r="98"></circle>
@@ -59,12 +57,13 @@
                     </div>
 
                     <div class="timer-controls">
-                        <button class="btn btn-ghost" id="btnReset" aria-label="Reset timer">Reset</button>
+                        <button class="btn btn-ghost btn-compact" id="btnReset" aria-label="Reset timer">Reset</button>
                         <button class="btn btn-primary" id="btnStart">Start Focus</button>
-                        <button class="btn btn-ghost" id="btnPause" hidden>Pause</button>
+                        <button class="btn btn-ghost btn-compact" id="btnPause" hidden>Pause</button>
                     </div>
                 </div>
 
+                <!-- Quick stats row -->
                 <div class="quick-stats">
                     <div class="mini-stat">
                         <span class="mini-stat-value" id="statSessionsToday">0</span>
@@ -76,24 +75,34 @@
                     </div>
                     <div class="mini-stat">
                         <span class="mini-stat-value" id="statStreak">0</span>
-                        <span class="mini-stat-label">Day streak</span>
+                        <span class="mini-stat-label">Day streak 🔥</span>
                     </div>
                 </div>
 
+                <!-- Motivation quote -->
+                <p class="quote-hint" id="motivationQuote"></p>
+
+                <!-- Up next tasks -->
                 <div class="section-header">
                     <h2>Up next</h2>
                     <button class="link-btn" data-nav="tasks">See all</button>
                 </div>
                 <div class="card task-preview-card" id="upNextList">
-                    <!-- Populated dynamically by tasks.js -->
                     <p class="empty-hint">No tasks yet. Add one from the Tasks tab.</p>
                 </div>
+
             </section>
 
             <!-- ============ TASKS VIEW ============ -->
             <section class="view" id="view-tasks" data-view="tasks">
+
                 <div class="card add-task-card">
                     <input type="text" id="newTaskInput" class="text-input" placeholder="What are you working on?" maxlength="80">
+                    <select id="newTaskPriority" class="priority-select">
+                        <option value="normal">·</option>
+                        <option value="high">↑ High</option>
+                        <option value="low">↓ Low</option>
+                    </select>
                     <button class="btn btn-primary btn-compact" id="btnAddTask">Add</button>
                 </div>
 
@@ -102,15 +111,21 @@
                     <span class="task-count" id="taskCount">0 tasks</span>
                 </div>
 
-                <ul class="task-list" id="taskList">
-                    <!-- Task items injected by tasks.js -->
-                </ul>
-
+                <ul class="task-list" id="taskList"></ul>
                 <p class="empty-hint" id="taskEmptyHint" hidden>Nothing here yet — add your first task above.</p>
+
+                <!-- Completed section -->
+                <div class="section-header" id="completedHeader" hidden>
+                    <h2>Completed</h2>
+                    <button class="link-btn" id="btnClearDone">Clear</button>
+                </div>
+                <ul class="task-list" id="completedList"></ul>
+
             </section>
 
             <!-- ============ STATISTICS VIEW ============ -->
             <section class="view" id="view-stats" data-view="stats">
+
                 <div class="stats-grid">
                     <div class="card stat-card">
                         <span class="stat-card-value" id="totalSessions">0</span>
@@ -126,36 +141,62 @@
                     </div>
                     <div class="card stat-card">
                         <span class="stat-card-value" id="avgSession">0m</span>
-                        <span class="stat-card-label">Avg. session length</span>
+                        <span class="stat-card-label">Avg. session</span>
+                    </div>
+                    <div class="card stat-card">
+                        <span class="stat-card-value" id="bestStreak">0</span>
+                        <span class="stat-card-label">Best streak 🏆</span>
+                    </div>
+                    <div class="card stat-card">
+                        <span class="stat-card-value" id="totalTasksDone">0</span>
+                        <span class="stat-card-label">Tasks completed</span>
                     </div>
                 </div>
 
                 <div class="section-header">
                     <h2>This week</h2>
+                    <span class="week-total-label" id="weekTotalLabel"></span>
                 </div>
                 <div class="card week-card">
-                    <div class="week-chart" id="weekChart">
-                        <!-- 7 bars injected by stats.js -->
-                    </div>
-                    <div class="week-labels" id="weekLabels">
-                        <!-- Day labels injected by stats.js -->
-                    </div>
+                    <div class="week-chart" id="weekChart"></div>
+                    <div class="week-labels" id="weekLabels"></div>
                 </div>
+
+                <div class="section-header"><h2>Daily goal</h2></div>
+                <div class="card goal-card">
+                    <div class="goal-row">
+                        <span class="goal-label">Sessions per day</span>
+                        <div class="goal-stepper">
+                            <button class="stepper-btn" id="goalMinus">−</button>
+                            <span id="goalValue">4</span>
+                            <button class="stepper-btn" id="goalPlus">+</button>
+                        </div>
+                    </div>
+                    <div class="goal-progress-wrap">
+                        <div class="goal-progress-bar" id="goalProgressBar"></div>
+                    </div>
+                    <span class="goal-progress-label" id="goalProgressLabel">0 / 4 sessions today</span>
+                </div>
+
             </section>
 
             <!-- ============ PROFILE VIEW ============ -->
             <section class="view" id="view-profile" data-view="profile">
+
                 <div class="card profile-card">
                     <div class="profile-photo-wrap" id="profilePhotoWrap">
                         <img id="profilePhoto" src="" alt="Profile photo" hidden>
                         <span id="profilePhotoInitial">F</span>
                     </div>
+                    <div class="profile-name-wrap">
+                        <span class="profile-name" id="profileName">Focuser</span>
+                        <button class="icon-btn" id="btnEditName" aria-label="Edit name">✎</button>
+                    </div>
+                    <input type="text" class="text-input profile-name-input" id="profileNameInput" placeholder="Your name" maxlength="30" hidden>
                     <button class="link-btn" id="btnChangePhoto">Change photo</button>
                 </div>
 
-                <div class="section-header">
-                    <h2>Device</h2>
-                </div>
+                <div class="section-header"><h2>Device</h2></div>
                 <div class="card device-card" id="deviceCard">
                     <div class="device-row">
                         <span class="device-label">Model</span>
@@ -175,12 +216,18 @@
                     </div>
                 </div>
 
-                <div class="section-header">
-                    <h2>Preferences</h2>
-                </div>
+                <div class="section-header"><h2>Preferences</h2></div>
                 <div class="card">
                     <div class="pref-row">
-                        <span>Notifications when a session ends</span>
+                        <span>Focus duration</span>
+                        <div class="goal-stepper">
+                            <button class="stepper-btn" id="focusMinus">−</button>
+                            <span id="focusDurValue">25</span><span style="font-size:11px;color:var(--text-dim)">m</span>
+                            <button class="stepper-btn" id="focusPlus">+</button>
+                        </div>
+                    </div>
+                    <div class="pref-row">
+                        <span>Notifications when session ends</span>
                         <label class="switch">
                             <input type="checkbox" id="toggleNotifications" checked>
                             <span class="switch-track"></span>
@@ -193,14 +240,22 @@
                             <span class="switch-track"></span>
                         </label>
                     </div>
+                    <div class="pref-row">
+                        <span>Auto-start breaks</span>
+                        <label class="switch">
+                            <input type="checkbox" id="toggleAutoBreak">
+                            <span class="switch-track"></span>
+                        </label>
+                    </div>
                 </div>
 
                 <button class="btn btn-danger-ghost" id="btnResetData">Reset all app data</button>
+
             </section>
 
         </main>
 
-        <!-- Bottom navigation -->
+        <!-- Bottom nav -->
         <nav class="bottom-nav">
             <button class="nav-item active" data-nav="home" aria-label="Home">
                 <span class="nav-icon">◎</span>
@@ -220,16 +275,9 @@
             </button>
         </nav>
 
-        <!-- Lightweight toast notification, used for in-app feedback -->
         <div class="toast" id="toast"></div>
     </div>
 
-    <!--
-        Script load order matters:
-        1. cordova.js       – injected by the Cordova build, provides device APIs
-        2. app.js           – defines the shared FocusFlow namespace + storage + navigation
-        3. timer/tasks/stats/device.js – feature modules that attach themselves to FocusFlow
-    -->
     <script type="text/javascript" src="cordova.js"></script>
     <script type="text/javascript" src="js/app.js"></script>
     <script type="text/javascript" src="js/timer.js"></script>

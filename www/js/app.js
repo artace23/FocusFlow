@@ -1,205 +1,200 @@
-/**
- * app.js
- * ---------------------------------------------------------
- * The application shell. Loaded first, before the feature
- * modules (timer.js, tasks.js, stats.js, device.js), so it
- * defines the shared `FocusFlow` namespace those modules
- * attach themselves to.
- *
- * Responsibilities:
- *   - A small localStorage wrapper (FocusFlow.Storage)
- *   - Bottom-nav / view switching
- *   - A lightweight toast helper for in-app feedback
- *   - Cordova `deviceready` bootstrapping
- * ---------------------------------------------------------
- */
 window.FocusFlow = window.FocusFlow || {};
 
 (function (FocusFlow) {
     'use strict';
 
-    /* =====================================================
-       Storage — thin wrapper around localStorage with
-       JSON handling and namespaced keys so every module
-       reads/writes consistently and errors don't crash the UI.
-       ===================================================== */
     var STORAGE_PREFIX = 'focusflow.';
-
     var Storage = {
-        get: function (key, fallback) {
-            try {
-                var raw = window.localStorage.getItem(STORAGE_PREFIX + key);
-                if (raw === null || raw === undefined) return fallback;
-                return JSON.parse(raw);
-            } catch (err) {
-                console.error('[FocusFlow.Storage] Failed to read "' + key + '":', err);
-                return fallback;
-            }
+        get: function (k, fb) {
+            try { var r = localStorage.getItem(STORAGE_PREFIX + k); return r == null ? fb : JSON.parse(r); }
+            catch (e) { return fb; }
         },
-        set: function (key, value) {
-            try {
-                window.localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
-                return true;
-            } catch (err) {
-                console.error('[FocusFlow.Storage] Failed to write "' + key + '":', err);
-                return false;
-            }
-        },
-        remove: function (key) {
-            try {
-                window.localStorage.removeItem(STORAGE_PREFIX + key);
-            } catch (err) {
-                console.error('[FocusFlow.Storage] Failed to remove "' + key + '":', err);
-            }
-        },
+        set: function (k, v) { try { localStorage.setItem(STORAGE_PREFIX + k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+        remove: function (k) { try { localStorage.removeItem(STORAGE_PREFIX + k); } catch (e) {} },
         clearAll: function () {
-            try {
-                Object.keys(window.localStorage)
-                    .filter(function (k) { return k.indexOf(STORAGE_PREFIX) === 0; })
-                    .forEach(function (k) { window.localStorage.removeItem(k); });
-            } catch (err) {
-                console.error('[FocusFlow.Storage] Failed to clear storage:', err);
-            }
+            try { Object.keys(localStorage).filter(function (k) { return k.indexOf(STORAGE_PREFIX) === 0; })
+                .forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
         }
     };
 
-    /* =====================================================
-       Date helpers shared across modules (stats/tasks/timer
-       all need a consistent "YYYY-MM-DD" key for "today").
-       ===================================================== */
     var DateUtil = {
-        todayKey: function (date) {
-            var d = date || new Date();
-            var y = d.getFullYear();
-            var m = String(d.getMonth() + 1).padStart(2, '0');
-            var day = String(d.getDate()).padStart(2, '0');
-            return y + '-' + m + '-' + day;
+        todayKey: function (d) {
+            d = d || new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         },
-        keyForOffset: function (offsetDays) {
-            var d = new Date();
-            d.setDate(d.getDate() + offsetDays);
-            return DateUtil.todayKey(d);
-        },
-        shortDayLabel: function (offsetDays) {
-            var d = new Date();
-            d.setDate(d.getDate() + offsetDays);
-            return ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()];
-        }
+        keyForOffset: function (n) { var d = new Date(); d.setDate(d.getDate() + n); return DateUtil.todayKey(d); },
+        shortDayLabel: function (n) { var d = new Date(); d.setDate(d.getDate() + n); return ['S','M','T','W','T','F','S'][d.getDay()]; }
     };
 
-    /* =====================================================
-       Toast — small non-blocking feedback message.
-       ===================================================== */
+    /* --- Toast --- */
     var toastTimer = null;
-    function showToast(message, duration) {
+    function showToast(msg, dur) {
         var el = document.getElementById('toast');
         if (!el) return;
-        el.textContent = message;
+        el.textContent = msg;
         el.classList.add('show');
-        if (toastTimer) clearTimeout(toastTimer);
-        toastTimer = setTimeout(function () {
-            el.classList.remove('show');
-        }, duration || 2200);
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { el.classList.remove('show'); }, dur || 2400);
     }
 
-    /* =====================================================
-       Navigation — swaps the visible `.view` section and
-       updates bottom nav + top bar to match.
-       ===================================================== */
+    /* --- Motivation quotes --- */
+    var QUOTES = [
+        'One focused hour beats three distracted ones.',
+        'Progress, not perfection.',
+        'Small steps every day.',
+        'Your future self will thank you.',
+        'Stay in flow. Stay on fire.',
+        'Discipline is choosing what you want most over what you want now.',
+        'The secret is to start.'
+    ];
+    function renderQuote() {
+        var el = document.getElementById('motivationQuote');
+        if (el) el.textContent = '"' + QUOTES[Math.floor(Math.random() * QUOTES.length)] + '"';
+    }
+
+    /* --- Navigation --- */
     var VIEW_META = {
-        home: { eyebrow: 'Focus session', title: 'FocusFlow' },
-        tasks: { eyebrow: 'Stay on track', title: 'Tasks' },
-        stats: { eyebrow: 'Your progress', title: 'Statistics' },
-        profile: { eyebrow: 'You', title: 'Profile' }
+        home:    { eyebrow: 'Focus session',  title: 'FocusFlow' },
+        tasks:   { eyebrow: 'Stay on track',  title: 'Tasks'     },
+        stats:   { eyebrow: 'Your progress',  title: 'Statistics'},
+        profile: { eyebrow: 'You',            title: 'Profile'   }
     };
 
-    function goToView(viewName) {
-        var views = document.querySelectorAll('.view');
-        var navItems = document.querySelectorAll('.nav-item');
-
-        views.forEach(function (v) {
-            v.classList.toggle('active', v.getAttribute('data-view') === viewName);
+    function goToView(name) {
+        document.querySelectorAll('.view').forEach(function (v) {
+            v.classList.toggle('active', v.getAttribute('data-view') === name);
         });
-        navItems.forEach(function (n) {
-            n.classList.toggle('active', n.getAttribute('data-nav') === viewName);
+        document.querySelectorAll('.nav-item').forEach(function (n) {
+            n.classList.toggle('active', n.getAttribute('data-nav') === name);
         });
-
-        var meta = VIEW_META[viewName] || VIEW_META.home;
-        var eyebrowEl = document.getElementById('topbarEyebrow');
-        var titleEl = document.getElementById('topbarTitle');
-        if (eyebrowEl) eyebrowEl.textContent = meta.eyebrow;
-        if (titleEl) titleEl.textContent = meta.title;
-
-        // Let interested modules know a view became active
-        // (e.g. stats.js re-renders the chart only when visible).
-        document.dispatchEvent(new CustomEvent('focusflow:viewchange', { detail: { view: viewName } }));
+        var meta = VIEW_META[name] || VIEW_META.home;
+        var eb = document.getElementById('topbarEyebrow');
+        var ti = document.getElementById('topbarTitle');
+        if (eb) eb.textContent = meta.eyebrow;
+        if (ti) ti.textContent = meta.title;
+        document.dispatchEvent(new CustomEvent('focusflow:viewchange', { detail: { view: name } }));
     }
 
     function initNavigation() {
         document.querySelectorAll('[data-nav]').forEach(function (el) {
-            el.addEventListener('click', function () {
-                goToView(el.getAttribute('data-nav'));
-            });
+            el.addEventListener('click', function () { goToView(el.getAttribute('data-nav')); });
         });
     }
 
-    /* =====================================================
-       Reset all app data — used by the Profile view.
-       ===================================================== */
-    function resetAllData() {
-        Storage.clearAll();
-        showToast('All app data has been reset');
-        document.dispatchEvent(new CustomEvent('focusflow:datareset'));
+    /* --- Profile name editing --- */
+    function initProfile() {
+        var nameEl   = document.getElementById('profileName');
+        var inputEl  = document.getElementById('profileNameInput');
+        var editBtn  = document.getElementById('btnEditName');
+
+        // Load saved name
+        var saved = Storage.get('profileName', '');
+        if (saved && nameEl) nameEl.textContent = saved;
+        updateAvatarInitial(saved);
+
+        if (editBtn && nameEl && inputEl) {
+            editBtn.addEventListener('click', function () {
+                var editing = !inputEl.hidden;
+                if (editing) {
+                    // Save
+                    var val = inputEl.value.trim() || 'Focuser';
+                    nameEl.textContent = val;
+                    Storage.set('profileName', val);
+                    updateAvatarInitial(val);
+                    inputEl.hidden = true;
+                    nameEl.hidden  = false;
+                    editBtn.textContent = '✎';
+                } else {
+                    inputEl.value  = nameEl.textContent;
+                    inputEl.hidden = false;
+                    nameEl.hidden  = true;
+                    inputEl.focus();
+                    editBtn.textContent = '✔';
+                }
+            });
+            inputEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') editBtn.click(); });
+        }
     }
 
+    function updateAvatarInitial(name) {
+        var initial = (name || 'F').charAt(0).toUpperCase();
+        var els = [document.getElementById('topbarAvatarInitial'), document.getElementById('profilePhotoInitial')];
+        els.forEach(function (el) { if (el) el.textContent = initial; });
+    }
+
+    /* --- Preferences (focus duration, auto-break) --- */
+    function initPreferences() {
+        var focusMinus = document.getElementById('focusMinus');
+        var focusPlus  = document.getElementById('focusPlus');
+        var focusVal   = document.getElementById('focusDurValue');
+        var autoBreak  = document.getElementById('toggleAutoBreak');
+
+        function updateFocusDisplay() {
+            var v = Storage.get('focusDuration', 25);
+            if (focusVal) focusVal.textContent = v;
+        }
+        updateFocusDisplay();
+        if (autoBreak) autoBreak.checked = Storage.get('autoBreak', false);
+
+        if (focusMinus) focusMinus.addEventListener('click', function () {
+            var v = Math.max(5, Storage.get('focusDuration', 25) - 5);
+            Storage.set('focusDuration', v); updateFocusDisplay();
+            document.dispatchEvent(new CustomEvent('focusflow:prefchanged'));
+        });
+        if (focusPlus) focusPlus.addEventListener('click', function () {
+            var v = Math.min(60, Storage.get('focusDuration', 25) + 5);
+            Storage.set('focusDuration', v); updateFocusDisplay();
+            document.dispatchEvent(new CustomEvent('focusflow:prefchanged'));
+        });
+        if (autoBreak) autoBreak.addEventListener('change', function () {
+            Storage.set('autoBreak', autoBreak.checked);
+        });
+    }
+
+    /* --- Reset --- */
     function initDangerZone() {
         var btn = document.getElementById('btnResetData');
         if (!btn) return;
         btn.addEventListener('click', function () {
-            // A simple native-feeling confirm; avoids pulling in extra UI for a rare action.
-            var confirmed = window.confirm('This will erase all tasks, sessions, and stats. Continue?');
-            if (confirmed) resetAllData();
+            if (window.confirm('Erase all tasks, sessions and stats?')) {
+                Storage.clearAll();
+                showToast('All data has been reset');
+                document.dispatchEvent(new CustomEvent('focusflow:datareset'));
+                updateAvatarInitial('F');
+                var nameEl = document.getElementById('profileName');
+                if (nameEl) nameEl.textContent = 'Focuser';
+            }
         });
     }
 
-    /* =====================================================
-       Cordova bootstrap
-       ===================================================== */
+    /* --- Cordova bootstrap --- */
     function onDeviceReady() {
-        console.log('[FocusFlow] deviceready fired. Cordova version: ' + (window.device ? device.cordova : 'n/a'));
-
-        // Cosmetic native plugins — safe no-ops if not installed.
         if (window.StatusBar) {
             StatusBar.styleLightContent();
-            StatusBar.backgroundColorByHexString('#14161f');
+            StatusBar.backgroundColorByHexString('#101217');
         }
-        if (navigator.splashscreen) {
-            navigator.splashscreen.hide();
-        }
-
-        // Let feature modules run their own device-dependent setup.
+        if (navigator.splashscreen) navigator.splashscreen.hide();
         document.dispatchEvent(new CustomEvent('focusflow:ready'));
     }
 
     function initApp() {
         initNavigation();
         initDangerZone();
-
+        initProfile();
+        initPreferences();
+        renderQuote();
         if (window.cordova) {
             document.addEventListener('deviceready', onDeviceReady, false);
         } else {
-            // Running in a plain browser during development —
-            // simulate deviceready so the rest of the app still boots.
-            console.warn('[FocusFlow] Cordova not detected — running in browser preview mode.');
+            console.warn('[FocusFlow] Browser preview mode.');
             setTimeout(onDeviceReady, 50);
         }
     }
 
-    // Public surface used by the other modules.
-    FocusFlow.Storage = Storage;
+    FocusFlow.Storage  = Storage;
     FocusFlow.DateUtil = DateUtil;
     FocusFlow.showToast = showToast;
-    FocusFlow.goToView = goToView;
+    FocusFlow.goToView  = goToView;
 
     document.addEventListener('DOMContentLoaded', initApp);
 

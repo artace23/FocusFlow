@@ -1,60 +1,33 @@
-/**
- * tasks.js
- * ---------------------------------------------------------
- * Task management: create, complete, delete, and persist
- * tasks to localStorage. Also renders the "Up next" preview
- * shown on the Home view.
- * ---------------------------------------------------------
- */
 window.FocusFlow = window.FocusFlow || {};
 
 (function (FocusFlow) {
     'use strict';
 
-    var Storage = FocusFlow.Storage;
+    var Storage  = FocusFlow.Storage;
     var DateUtil = FocusFlow.DateUtil;
     var TASKS_KEY = 'tasks';
 
-    /**
-     * Sample data so the app has something to show on first
-     * launch / for demos. Only seeded if no tasks exist yet.
-     */
+    var PRIORITY_ICON = { high: '↑', low: '↓', normal: '' };
+
     var SAMPLE_TASKS = [
-        { id: 'seed-1', title: 'Plan tomorrow\'s priorities', completed: false, createdAt: new Date().toISOString() },
-        { id: 'seed-2', title: 'Reply to outstanding emails', completed: false, createdAt: new Date().toISOString() },
-        { id: 'seed-3', title: 'Review project roadmap', completed: true, createdAt: new Date().toISOString(), completedAt: new Date().toISOString() }
+        { id: 'seed-1', title: 'Plan tomorrow\'s priorities', priority: 'high',   completed: false, createdAt: new Date().toISOString() },
+        { id: 'seed-2', title: 'Reply to outstanding emails', priority: 'normal', completed: false, createdAt: new Date().toISOString() },
+        { id: 'seed-3', title: 'Review project roadmap',      priority: 'normal', completed: true,  createdAt: new Date().toISOString(), completedAt: new Date().toISOString() }
     ];
 
     function getTasks() {
-        var tasks = Storage.get(TASKS_KEY, null);
-        if (tasks === null) {
-            Storage.set(TASKS_KEY, SAMPLE_TASKS);
-            return SAMPLE_TASKS.slice();
-        }
-        return tasks;
+        var t = Storage.get(TASKS_KEY, null);
+        if (t === null) { Storage.set(TASKS_KEY, SAMPLE_TASKS); return SAMPLE_TASKS.slice(); }
+        return t;
     }
+    function saveTasks(tasks) { Storage.set(TASKS_KEY, tasks); }
+    function generateId() { return 't-' + Date.now() + '-' + Math.floor(Math.random() * 1000); }
 
-    function saveTasks(tasks) {
-        Storage.set(TASKS_KEY, tasks);
-    }
-
-    function generateId() {
-        return 't-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-    }
-
-    function addTask(title) {
+    function addTask(title, priority) {
         var trimmed = (title || '').trim();
-        if (!trimmed) {
-            FocusFlow.showToast('Type a task before adding it');
-            return false;
-        }
+        if (!trimmed) { FocusFlow.showToast('Type a task first'); return false; }
         var tasks = getTasks();
-        tasks.unshift({
-            id: generateId(),
-            title: trimmed,
-            completed: false,
-            createdAt: new Date().toISOString()
-        });
+        tasks.unshift({ id: generateId(), title: trimmed, priority: priority || 'normal', completed: false, createdAt: new Date().toISOString() });
         saveTasks(tasks);
         render();
         return true;
@@ -62,138 +35,143 @@ window.FocusFlow = window.FocusFlow || {};
 
     function toggleTask(id) {
         var tasks = getTasks();
-        var task = tasks.find(function (t) { return t.id === id; });
-        if (!task) return;
-        task.completed = !task.completed;
-        task.completedAt = task.completed ? new Date().toISOString() : null;
+        var t = tasks.find(function (x) { return x.id === id; });
+        if (!t) return;
+        t.completed  = !t.completed;
+        t.completedAt = t.completed ? new Date().toISOString() : null;
         saveTasks(tasks);
         render();
         document.dispatchEvent(new CustomEvent('focusflow:taskschanged'));
     }
 
     function deleteTask(id) {
-        var tasks = getTasks().filter(function (t) { return t.id !== id; });
-        saveTasks(tasks);
+        saveTasks(getTasks().filter(function (t) { return t.id !== id; }));
+        render();
+        document.dispatchEvent(new CustomEvent('focusflow:taskschanged'));
+    }
+
+    function clearCompleted() {
+        saveTasks(getTasks().filter(function (t) { return !t.completed; }));
         render();
         document.dispatchEvent(new CustomEvent('focusflow:taskschanged'));
     }
 
     function tasksCompletedToday() {
-        var todayKey = DateUtil.todayKey();
+        var today = DateUtil.todayKey();
         return getTasks().filter(function (t) {
-            return t.completed && t.completedAt && DateUtil.todayKey(new Date(t.completedAt)) === todayKey;
+            return t.completed && t.completedAt && DateUtil.todayKey(new Date(t.completedAt)) === today;
         }).length;
     }
 
-    /* ----------------- Rendering ----------------- */
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+    function totalTasksDone() {
+        return getTasks().filter(function (t) { return t.completed; }).length;
+    }
+
+    /* --- DOM helpers --- */
+    function esc(str) { var d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+
+    function taskItemHTML(t) {
+        var pIcon = PRIORITY_ICON[t.priority] || '';
+        var pClass = t.priority !== 'normal' ? ' priority-' + t.priority : '';
+        return (
+            '<li class="task-item' + (t.completed ? ' completed' : '') + pClass + '" data-id="' + t.id + '">' +
+                '<button class="task-checkbox" data-action="toggle" aria-label="Toggle complete">' + (t.completed ? '✓' : '') + '</button>' +
+                (pIcon ? '<span class="priority-badge">' + pIcon + '</span>' : '') +
+                '<span class="task-title">' + esc(t.title) + '</span>' +
+                '<button class="task-delete" data-action="delete" aria-label="Delete">✕</button>' +
+            '</li>'
+        );
     }
 
     function renderTaskList() {
-        var listEl = document.getElementById('taskList');
-        var emptyHint = document.getElementById('taskEmptyHint');
-        var countEl = document.getElementById('taskCount');
+        var listEl     = document.getElementById('taskList');
+        var doneEl     = document.getElementById('completedList');
+        var emptyHint  = document.getElementById('taskEmptyHint');
+        var doneHeader = document.getElementById('completedHeader');
+        var countEl    = document.getElementById('taskCount');
         if (!listEl) return;
 
-        var tasks = getTasks();
-        countEl.textContent = tasks.length + (tasks.length === 1 ? ' task' : ' tasks');
+        var all       = getTasks();
+        var pending   = all.filter(function (t) { return !t.completed; });
+        var completed = all.filter(function (t) { return t.completed; });
 
-        if (tasks.length === 0) {
-            listEl.innerHTML = '';
-            emptyHint.hidden = false;
-            return;
+        // Sort: high first, then normal, then low
+        var order = { high: 0, normal: 1, low: 2 };
+        pending.sort(function (a, b) { return (order[a.priority] || 1) - (order[b.priority] || 1); });
+
+        countEl.textContent = pending.length + (pending.length === 1 ? ' task' : ' tasks');
+        emptyHint.hidden   = pending.length > 0;
+        listEl.innerHTML   = pending.map(taskItemHTML).join('');
+
+        if (doneEl && doneHeader) {
+            doneHeader.hidden  = completed.length === 0;
+            doneEl.innerHTML   = completed.map(taskItemHTML).join('');
         }
-        emptyHint.hidden = true;
-
-        listEl.innerHTML = tasks.map(function (t) {
-            return (
-                '<li class="task-item ' + (t.completed ? 'completed' : '') + '" data-id="' + t.id + '">' +
-                    '<button class="task-checkbox" data-action="toggle" aria-label="Toggle task complete">' + (t.completed ? '✓' : '') + '</button>' +
-                    '<span class="task-title">' + escapeHtml(t.title) + '</span>' +
-                    '<button class="task-delete" data-action="delete" aria-label="Delete task">✕</button>' +
-                '</li>'
-            );
-        }).join('');
     }
 
     function renderUpNext() {
         var container = document.getElementById('upNextList');
         if (!container) return;
-
         var pending = getTasks().filter(function (t) { return !t.completed; }).slice(0, 3);
-        if (pending.length === 0) {
-            container.innerHTML = '<p class="empty-hint">All caught up! Add a new task from the Tasks tab.</p>';
+        if (!pending.length) {
+            container.innerHTML = '<p class="empty-hint">All caught up! 🎉</p>';
             return;
         }
         container.innerHTML = pending.map(function (t) {
+            var pIcon = PRIORITY_ICON[t.priority] || '';
             return (
                 '<div class="task-preview-row">' +
-                    '<span class="task-preview-dot"></span>' +
-                    '<span>' + escapeHtml(t.title) + '</span>' +
+                    '<span class="task-preview-dot' + (t.priority === 'high' ? ' dot-high' : '') + '"></span>' +
+                    (pIcon ? '<span class="priority-badge small">' + pIcon + '</span>' : '') +
+                    '<span>' + esc(t.title) + '</span>' +
                 '</div>'
             );
         }).join('');
     }
 
-    function render() {
-        renderTaskList();
-        renderUpNext();
+    function render() { renderTaskList(); renderUpNext(); }
+
+    /* --- Wiring --- */
+    function delegateList(el) {
+        el.addEventListener('click', function (e) {
+            var actionEl = e.target.closest('[data-action]');
+            if (!actionEl) return;
+            var itemEl = e.target.closest('.task-item');
+            var id = itemEl && itemEl.getAttribute('data-id');
+            if (!id) return;
+            if (actionEl.getAttribute('data-action') === 'toggle') toggleTask(id);
+            else if (actionEl.getAttribute('data-action') === 'delete') deleteTask(id);
+        });
     }
 
-    /* ----------------- Wiring ----------------- */
     function bindControls() {
-        var input = document.getElementById('newTaskInput');
-        var addBtn = document.getElementById('btnAddTask');
-        var list = document.getElementById('taskList');
+        var input    = document.getElementById('newTaskInput');
+        var priority = document.getElementById('newTaskPriority');
+        var addBtn   = document.getElementById('btnAddTask');
+        var listEl   = document.getElementById('taskList');
+        var doneEl   = document.getElementById('completedList');
+        var clearBtn = document.getElementById('btnClearDone');
 
         if (addBtn) {
             addBtn.addEventListener('click', function () {
-                if (addTask(input.value)) {
+                if (addTask(input.value, priority ? priority.value : 'normal')) {
                     input.value = '';
+                    if (priority) priority.value = 'normal';
                     input.focus();
                 }
             });
         }
-        if (input) {
-            input.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') addBtn.click();
-            });
-        }
-        if (list) {
-            // Event delegation keeps this working even as items are re-rendered.
-            list.addEventListener('click', function (e) {
-                var actionEl = e.target.closest('[data-action]');
-                if (!actionEl) return;
-                var itemEl = e.target.closest('.task-item');
-                var id = itemEl && itemEl.getAttribute('data-id');
-                if (!id) return;
-
-                if (actionEl.getAttribute('data-action') === 'toggle') {
-                    toggleTask(id);
-                } else if (actionEl.getAttribute('data-action') === 'delete') {
-                    deleteTask(id);
-                }
-            });
-        }
+        if (input) { input.addEventListener('keydown', function (e) { if (e.key === 'Enter') addBtn.click(); }); }
+        if (listEl) delegateList(listEl);
+        if (doneEl)  delegateList(doneEl);
+        if (clearBtn) { clearBtn.addEventListener('click', function () { clearCompleted(); FocusFlow.showToast('Completed tasks cleared'); }); }
     }
 
-    function init() {
-        bindControls();
-        render();
-    }
+    function init() { bindControls(); render(); }
 
-    document.addEventListener('focusflow:datareset', render);
     document.addEventListener('focusflow:ready', init);
+    document.addEventListener('focusflow:datareset', render);
 
-    FocusFlow.Tasks = {
-        getTasks: getTasks,
-        addTask: addTask,
-        toggleTask: toggleTask,
-        deleteTask: deleteTask,
-        tasksCompletedToday: tasksCompletedToday
-    };
+    FocusFlow.Tasks = { getTasks, tasksCompletedToday, totalTasksDone };
 
 })(window.FocusFlow);

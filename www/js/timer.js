@@ -1,142 +1,136 @@
-/**
- * timer.js
- * ---------------------------------------------------------
- * The Pomodoro focus timer. Handles counting down, updating
- * the Flow Ring UI, and persisting completed sessions to
- * storage. Fires a `focusflow:timercomplete` event so
- * device.js can trigger a local notification + vibration
- * without timer.js needing to know about plugins directly.
- * ---------------------------------------------------------
- */
 window.FocusFlow = window.FocusFlow || {};
 
 (function (FocusFlow) {
     'use strict';
 
-    var Storage = FocusFlow.Storage;
+    var Storage  = FocusFlow.Storage;
     var DateUtil = FocusFlow.DateUtil;
 
-    var FOCUS_SECONDS = 25 * 60;   // 25-minute Pomodoro session
-    var SESSIONS_KEY = 'sessions'; // array of { dateKey, minutes, completedAt }
+    var SESSIONS_KEY = 'sessions';
+    var RING_CIRCUMFERENCE = 2 * Math.PI * 98;
+
+    /* ---------- Mode config ---------- */
+    var MODES = {
+        focus: { label: 'Focus',       defaultMin: 25 },
+        short: { label: 'Short Break', defaultMin: 5  },
+        long:  { label: 'Long Break',  defaultMin: 15 }
+    };
 
     var state = {
-        remaining: FOCUS_SECONDS,
-        totalForRun: FOCUS_SECONDS,
+        mode: 'focus',
+        remaining: 0,
+        totalForRun: 0,
         running: false,
         intervalId: null
     };
 
-    var RING_CIRCUMFERENCE = 2 * Math.PI * 98; // matches the SVG circle r=98
+    function getFocusDuration() {
+        return (Storage.get('focusDuration', 25)) * 60;
+    }
+    function durationForMode(mode) {
+        if (mode === 'focus') return getFocusDuration();
+        return MODES[mode].defaultMin * 60;
+    }
+    function resetToMode(mode) {
+        pause();
+        state.mode = mode;
+        state.remaining = durationForMode(mode);
+        state.totalForRun = state.remaining;
+        render();
+    }
 
-    /* ----------------- DOM refs (queried lazily) ----------------- */
+    /* ---------- DOM refs ---------- */
     function els() {
         return {
-            display: document.getElementById('timerDisplay'),
-            mode: document.getElementById('timerMode'),
-            ring: document.getElementById('ringProgress'),
-            ringWrap: document.querySelector('.flow-ring-wrap'),
-            btnStart: document.getElementById('btnStart'),
-            btnPause: document.getElementById('btnPause'),
-            btnReset: document.getElementById('btnReset'),
-            statSessionsToday: document.getElementById('statSessionsToday'),
-            statMinutesToday: document.getElementById('statMinutesToday'),
-            statStreak: document.getElementById('statStreak')
+            display:     document.getElementById('timerDisplay'),
+            mode:        document.getElementById('timerMode'),
+            ring:        document.getElementById('ringProgress'),
+            ringWrap:    document.querySelector('.flow-ring-wrap'),
+            btnStart:    document.getElementById('btnStart'),
+            btnPause:    document.getElementById('btnPause'),
+            btnReset:    document.getElementById('btnReset'),
+            statSessions: document.getElementById('statSessionsToday'),
+            statMinutes:  document.getElementById('statMinutesToday'),
+            statStreak:   document.getElementById('statStreak')
         };
     }
 
-    function formatTime(totalSeconds) {
-        var m = Math.floor(totalSeconds / 60);
-        var s = totalSeconds % 60;
-        return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    function formatTime(s) {
+        return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
     }
 
     function render() {
         var e = els();
-        if (!e.display) return; // Home view not present (shouldn't happen, but stay defensive)
-
+        if (!e.display) return;
         e.display.textContent = formatTime(state.remaining);
-
-        var progressFraction = 1 - (state.remaining / state.totalForRun);
-        var offset = RING_CIRCUMFERENCE - (progressFraction * RING_CIRCUMFERENCE);
-        e.ring.style.strokeDasharray = RING_CIRCUMFERENCE;
+        var progress = 1 - state.remaining / state.totalForRun;
+        var offset = RING_CIRCUMFERENCE * (1 - progress);
+        e.ring.style.strokeDasharray  = RING_CIRCUMFERENCE;
         e.ring.style.strokeDashoffset = offset;
-
         if (e.ringWrap) e.ringWrap.classList.toggle('is-running', state.running);
-
-        e.btnStart.hidden = state.running;
-        e.btnPause.hidden = !state.running;
-        e.btnStart.textContent = state.remaining === state.totalForRun ? 'Start Focus' : 'Resume';
-
+        e.mode.textContent = MODES[state.mode].label;
+        e.btnStart.hidden  = state.running;
+        e.btnPause.hidden  = !state.running;
+        e.btnStart.textContent = state.remaining === state.totalForRun ? 'Start ' + MODES[state.mode].label : 'Resume';
         renderQuickStats();
     }
 
-    /* ----------------- Session persistence ----------------- */
-    function getSessions() {
-        return Storage.get(SESSIONS_KEY, []);
-    }
-
-    function saveSession(minutes) {
-        var sessions = getSessions();
-        sessions.push({
-            dateKey: DateUtil.todayKey(),
-            minutes: minutes,
-            completedAt: new Date().toISOString()
-        });
-        Storage.set(SESSIONS_KEY, sessions);
-    }
-
+    /* ---------- Sessions ---------- */
+    function getSessions()    { return Storage.get(SESSIONS_KEY, []); }
     function sessionsForToday() {
-        var todayKey = DateUtil.todayKey();
-        return getSessions().filter(function (s) { return s.dateKey === todayKey; });
+        var today = DateUtil.todayKey();
+        return getSessions().filter(function (s) { return s.dateKey === today; });
     }
-
-    /** Consecutive days (including today, if it has a session) with at least one completed session. */
+    function saveSession(minutes) {
+        var arr = getSessions();
+        arr.push({ dateKey: DateUtil.todayKey(), minutes: minutes, completedAt: new Date().toISOString() });
+        Storage.set(SESSIONS_KEY, arr);
+    }
     function computeStreak() {
-        var sessions = getSessions();
-        var daysWithSessions = {};
-        sessions.forEach(function (s) { daysWithSessions[s.dateKey] = true; });
-
-        var streak = 0;
-        var offset = 0;
-        // If today has no sessions yet, streak still counts backwards from yesterday.
-        if (!daysWithSessions[DateUtil.todayKey()]) {
-            offset = -1;
-        }
-        while (daysWithSessions[DateUtil.keyForOffset(offset)]) {
-            streak++;
-            offset--;
-        }
+        var map = {};
+        getSessions().forEach(function (s) { map[s.dateKey] = true; });
+        var streak = 0, offset = map[DateUtil.todayKey()] ? 0 : -1;
+        while (map[DateUtil.keyForOffset(offset)]) { streak++; offset--; }
         return streak;
+    }
+    function computeBestStreak() {
+        var map = {};
+        getSessions().forEach(function (s) { map[s.dateKey] = true; });
+        var days = Object.keys(map).sort();
+        var best = 0, cur = 0, prev = null;
+        days.forEach(function (d) {
+            if (prev) {
+                var diff = (new Date(d) - new Date(prev)) / 86400000;
+                cur = diff === 1 ? cur + 1 : 1;
+            } else { cur = 1; }
+            if (cur > best) best = cur;
+            prev = d;
+        });
+        return best;
     }
 
     function renderQuickStats() {
         var e = els();
-        if (!e.statSessionsToday) return;
-        var todays = sessionsForToday();
+        if (!e.statSessions) return;
+        var todays  = sessionsForToday();
         var minutes = todays.reduce(function (sum, s) { return sum + s.minutes; }, 0);
-
-        e.statSessionsToday.textContent = todays.length;
-        e.statMinutesToday.textContent = minutes;
-        e.statStreak.textContent = computeStreak();
+        e.statSessions.textContent = todays.length;
+        e.statMinutes.textContent  = minutes;
+        e.statStreak.textContent   = computeStreak();
     }
 
-    /* ----------------- Timer control ----------------- */
+    /* ---------- Timer control ---------- */
     function tick() {
         state.remaining--;
-        if (state.remaining <= 0) {
-            completeSession();
-            return;
-        }
+        if (state.remaining <= 0) { completeSession(); return; }
         render();
     }
-
     function start() {
         if (state.running) return;
         state.running = true;
         state.intervalId = setInterval(tick, 1000);
         render();
     }
-
     function pause() {
         if (!state.running) return;
         state.running = false;
@@ -144,62 +138,64 @@ window.FocusFlow = window.FocusFlow || {};
         state.intervalId = null;
         render();
     }
-
     function reset() {
         pause();
-        state.remaining = FOCUS_SECONDS;
-        state.totalForRun = FOCUS_SECONDS;
+        state.remaining = durationForMode(state.mode);
+        state.totalForRun = state.remaining;
         render();
     }
-
     function completeSession() {
         pause();
-        var minutesCompleted = Math.round(state.totalForRun / 60);
-        saveSession(minutesCompleted);
-        state.remaining = state.totalForRun; // reset ring for the next round
-
-        FocusFlow.showToast('Focus session complete — nice work!');
+        var mins = Math.round(state.totalForRun / 60);
+        if (state.mode === 'focus') {
+            saveSession(mins);
+            FocusFlow.showToast('Focus session complete — nice work! 🎉');
+            document.dispatchEvent(new CustomEvent('focusflow:timercomplete', { detail: { minutes: mins } }));
+            document.dispatchEvent(new CustomEvent('focusflow:sessionsaved'));
+            // Auto-start short break if pref set
+            if (Storage.get('autoBreak', false)) {
+                setTimeout(function () { setActiveMode('short'); start(); }, 800);
+                return;
+            }
+        } else {
+            FocusFlow.showToast('Break over. Ready to focus?');
+        }
+        state.remaining = state.totalForRun;
         render();
-
-        // Notify other modules (device.js) so they can fire a
-        // local notification + vibration without timer.js coupling
-        // directly to Cordova plugin APIs.
-        document.dispatchEvent(new CustomEvent('focusflow:timercomplete', {
-            detail: { minutes: minutesCompleted }
-        }));
-
-        // Statistics view listens for this to refresh if it's on screen.
-        document.dispatchEvent(new CustomEvent('focusflow:sessionsaved'));
     }
 
-    /* ----------------- Wiring ----------------- */
+    /* ---------- Mode pills ---------- */
+    function setActiveMode(mode) {
+        document.querySelectorAll('.mode-pill').forEach(function (p) {
+            p.classList.toggle('active', p.getAttribute('data-mode') === mode);
+        });
+        resetToMode(mode);
+    }
+
+    /* ---------- Wiring ---------- */
     function bindControls() {
         var e = els();
         if (!e.btnStart) return;
-
         e.btnStart.addEventListener('click', start);
         e.btnPause.addEventListener('click', pause);
-        e.btnReset.addEventListener('click', function () {
-            reset();
-            FocusFlow.showToast('Timer reset');
+        e.btnReset.addEventListener('click', function () { reset(); FocusFlow.showToast('Timer reset'); });
+        document.querySelectorAll('.mode-pill').forEach(function (pill) {
+            pill.addEventListener('click', function () { setActiveMode(pill.getAttribute('data-mode')); });
         });
     }
 
     function init() {
+        resetToMode('focus');
         bindControls();
-        render();
     }
 
-    // Reset in-memory timer state whenever the user wipes app data.
-    document.addEventListener('focusflow:datareset', reset);
+    document.addEventListener('focusflow:datareset', function () { resetToMode('focus'); });
     document.addEventListener('focusflow:ready', init);
+    // Refresh duration when preference changes
+    document.addEventListener('focusflow:prefchanged', function () {
+        if (!state.running) reset();
+    });
 
-    // Expose a small public API in case other modules need timer data.
-    FocusFlow.Timer = {
-        getSessions: getSessions,
-        sessionsForToday: sessionsForToday,
-        computeStreak: computeStreak,
-        FOCUS_SECONDS: FOCUS_SECONDS
-    };
+    FocusFlow.Timer = { getSessions, sessionsForToday, computeStreak, computeBestStreak, durationForMode };
 
 })(window.FocusFlow);
